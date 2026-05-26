@@ -1,4 +1,20 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+    depends_on:
+      - lobe-chat
+      - casdoor
+      - minio
+    restart: unless-stopped
+
   casdoor:
     image: casbin/casdoor:v2.13.0
     container_name: casdoor
@@ -20,31 +36,29 @@ services:
   lobe-chat:
     image: lobehub/lobe-chat-database
     container_name: lobe-chat
-    ports:
-      - "${LOBECHAT_PORT:-47000}:3210"
     volumes:
       # HOTFIX: Patch MCP callTool to add session retry logic
       - ./patches/route.js:/app/.next/server/app/(backend)/trpc/tools/[trpc]/route.js:ro
     environment:
-      # App configuration
-      - APP_URL=http://${HOST_DOMAIN:-localhost}:${LOBECHAT_PORT:-47000}
+      # App configuration — set LOBECHAT_DOMAIN to the CloudFront HTTPS hostname
+      - APP_URL=https://${LOBECHAT_DOMAIN}
       # Database configuration
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/lobechat
       # NextAuth SSO configuration
       - NEXT_AUTH_SSO_PROVIDERS=casdoor
       - NEXT_AUTH_SECRET=${NEXT_AUTH_SECRET}
-      - NEXTAUTH_URL=http://${HOST_DOMAIN:-localhost}:${LOBECHAT_PORT:-47000}
-      - AUTH_URL=http://${HOST_DOMAIN:-localhost}:${LOBECHAT_PORT:-47000}
-      # Casdoor configuration
-      - AUTH_CASDOOR_ISSUER=http://${HOST_DOMAIN:-localhost}:${CASDOOR_PORT:-47002}
+      - NEXTAUTH_URL=https://${LOBECHAT_DOMAIN}
+      - AUTH_URL=https://${LOBECHAT_DOMAIN}
+      # Casdoor — use public CloudFront domain so issuer in JWT tokens matches
+      - AUTH_CASDOOR_ISSUER=https://${CASDOOR_DOMAIN}
       - AUTH_CASDOOR_ID=${AUTH_CASDOOR_ID}
       - AUTH_CASDOOR_SECRET=${AUTH_CASDOOR_SECRET}
       # Trust custom hostname for NextAuth
       - AUTH_TRUST_HOST=true
-      # S3 Storage configuration
-      - S3_ENDPOINT=http://${HOST_DOMAIN:-localhost}:${MINIO_PORT:-47005}
+      # S3 — dedicated Caddy virtual host for MinIO
+      - S3_ENDPOINT=https://${MINIO_DOMAIN}
       - S3_BUCKET=${S3_BUCKET:-lobe}
-      - S3_PUBLIC_DOMAIN=http://${HOST_DOMAIN:-localhost}:${MINIO_PORT:-47005}
+      - S3_PUBLIC_DOMAIN=https://${MINIO_DOMAIN}
       - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
       - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - S3_ENABLE_PATH_STYLE=1
@@ -68,8 +82,21 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
-      vllm:
-        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    container_name: qdrant
+    ports:
+      - "${QDRANT_PORT:-47009}:6333"
+      - "${QDRANT_GRPC_PORT:-47010}:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   mcphub:
     image: samanhappy/mcphub:latest
@@ -98,7 +125,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
+  # vLLM requires an NVIDIA GPU. Disabled by default; enable with: docker compose --profile gpu up
   vllm:
+    profiles: ["gpu"]
     image: vllm/vllm-openai:latest
     container_name: vllm
     ports:
@@ -138,7 +167,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
-      - MINIO_API_CORS_ALLOW_ORIGIN=http://${HOST_DOMAIN:-localhost}:${LOBECHAT_PORT:-47000}
+      - MINIO_API_CORS_ALLOW_ORIGIN=https://${LOBECHAT_DOMAIN:-localhost},https://${MINIO_DOMAIN:-localhost}
     command: server /data --console-address ":9001"
     restart: unless-stopped
     healthcheck:

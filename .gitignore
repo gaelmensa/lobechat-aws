@@ -17,6 +17,13 @@ uv.lock
 aws_credentials.yaml
 *.pem
 
+# Terraform state and secrets
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/terraform.tfvars
+
 # IDE
 .idea/
 .vscode/
