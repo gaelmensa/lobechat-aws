@@ -24,8 +24,12 @@ usermod -aG docker ubuntu
 
 # ---------------------------------------------------------------------------
 # 2. Derive domains from instance public IP (sslip.io)
+# IMDSv2 required: fetch a token first, then use it to get the public IP
 # ---------------------------------------------------------------------------
-PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
 IP_DASHES=$(echo "$PUBLIC_IP" | tr '.' '-')
 
 LOBECHAT_DOMAIN="$IP_DASHES.sslip.io"
@@ -125,11 +129,11 @@ $MINIO_DOMAIN {
 EOF
 
 # ---------------------------------------------------------------------------
-# 9. Start stack
+# 9. Start stack (vllm excluded — requires GPU, not available on this instance)
 # ---------------------------------------------------------------------------
 cd "$REPO_DIR"
-docker compose pull
-docker compose up -d
+docker compose pull caddy casdoor lobe-chat qdrant mcphub minio postgres
+docker compose up -d caddy casdoor lobe-chat qdrant mcphub minio postgres
 
 echo "=== user-data complete ==="
 echo "LobeChat: https://$LOBECHAT_DOMAIN"
