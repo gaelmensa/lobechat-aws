@@ -6,7 +6,7 @@ exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
 # 1. System packages
 # ---------------------------------------------------------------------------
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg jq awscli git
+apt-get install -y ca-certificates curl gnupg jq git
 
 # Docker
 install -m 0755 -d /etc/apt/keyrings
