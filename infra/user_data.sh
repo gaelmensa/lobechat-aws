@@ -112,7 +112,8 @@ mv /tmp/init_data_patched.json "$REPO_DIR/config/init_data.json"
 # ---------------------------------------------------------------------------
 cat > "$REPO_DIR/config/Caddyfile" <<EOF
 {
-  email admin@example.com
+  email gaelmensa@gmail.com
+  acme_ca https://acme-v02.api.letsencrypt.org/directory
 }
 
 $LOBECHAT_DOMAIN {
