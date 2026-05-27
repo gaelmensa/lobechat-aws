@@ -136,6 +136,16 @@ cd "$REPO_DIR"
 docker compose pull caddy casdoor lobe-chat qdrant mcphub minio postgres
 docker compose up -d caddy casdoor lobe-chat qdrant mcphub minio postgres
 
+# ---------------------------------------------------------------------------
+# 10. Create MinIO bucket
+# ---------------------------------------------------------------------------
+echo "Waiting for MinIO to be ready..."
+until docker exec minio mc alias set local http://localhost:9000 minioadmin "$MINIO_ROOT_PASSWORD" 2>/dev/null; do
+  sleep 5
+done
+docker exec minio mc mb local/lobe --ignore-existing
+echo "MinIO bucket 'lobe' created"
+
 echo "=== user-data complete ==="
 echo "LobeChat: https://$LOBECHAT_DOMAIN"
 echo "Casdoor:  https://$CASDOOR_DOMAIN"
