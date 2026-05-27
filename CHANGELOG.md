@@ -1,3 +1,19 @@
+## v0.5.3 (2026-05-27)
+
+### Feat
+
+- **infra**: auto-create MinIO bucket lobe on boot
+- switch to Caddy reverse proxy, add qdrant, move vllm to gpu profile
+- **db**: add dbmate migration system with schema and seed support
+- **lobechat**: use OpenRouter for embeddings
+
+### Fix
+
+- **infra**: use real email and force Let's Encrypt in Caddyfile
+- **infra**: use IMDSv2 for metadata fetch, exclude vllm from compose up
+- **infra**: remove awscli from apt install, not available in Ubuntu 24.04
+- **infra**: inject secrets via templatefile instead of SSM. SSM GetParameter is blocked in the ESADE sandbox. Secrets are now passed directly through Terraform templatefile() vars into user_data.sh. Removed all aws_ssm_parameter resources from main.tf.
+
 ## v0.5.2 (2026-01-27)
 
 ### Fix
