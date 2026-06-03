@@ -2,9 +2,9 @@
 
 ## Evidence of GitHub Actions Run
 
-> **Actions run URL:** _TODO: paste URL here after pushing (e.g. https://github.com/gaelmensa/lobechat-aws/actions/runs/XXXXXXXXX)_
+> **Actions run URL:** https://github.com/gaelmensa/lobechat-aws/actions/runs/26869977342
 >
-> **Commit SHA the run executed against:** _TODO: paste SHA here (e.g. `git rev-parse HEAD` output)_
+> **Commit SHA the run executed against:** `5ff717953a32b89dfbf276f44bbc995d36557f87`
 
 ![CI Actions run](docs/evidence/ci/actions-run.png)
 
