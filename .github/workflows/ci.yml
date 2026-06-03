@@ -1,0 +1,139 @@
+name: CI — Static Analysis (build-free)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Hard rule: no docker build, no docker compose up/run, no pytest.
+# tests/ are live-stack integration tests — they import openai / httpx and hit running
+# endpoints such as vLLM /health (see tests/test_vllm.py). They cannot run in a
+# build-free CI that has no GPU stack available.
+
+jobs:
+
+  # ── a. Hadolint — lint both Dockerfiles ────────────────────────────────────
+  hadolint:
+    name: Hadolint — Dockerfile linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history; default shallow clone makes git-history gates fail
+
+      - name: hadolint — dockerfiles/sandbox.Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: dockerfiles/sandbox.Dockerfile
+        continue-on-error: true  # warn-only: surfaces findings without failing the run
+
+      - name: hadolint — dockerfiles/mcphub.Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: dockerfiles/mcphub.Dockerfile
+        continue-on-error: true  # warn-only: surfaces findings without failing the run
+
+  # ── c. Docker Compose config validation ────────────────────────────────────
+  compose-validate:
+    name: Docker Compose — config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Supply dummy env values for Compose interpolation
+        # Safe: .env.example contains only non-secret placeholder strings.
+        # .gitignore already excludes .env from git, so this copy is never committed.
+        run: cp .env.example .env
+
+      - name: Validate Compose schema and interpolation (config -q — never up/build)
+        run: docker compose -f docker-compose.yml config -q
+
+  # ── d. yamllint + actionlint ───────────────────────────────────────────────
+  yaml-actionlint:
+    name: yamllint + actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install --quiet "yamllint==1.35.1"
+
+      - name: yamllint — docker-compose.yml and ci.yml
+        run: yamllint -d relaxed docker-compose.yml .github/workflows/ci.yml
+
+      - name: Install actionlint
+        run: |
+          ACTIONLINT_VERSION=1.7.4
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz actionlint
+          sudo mv actionlint /usr/local/bin/
+
+      - name: actionlint — .github/workflows/ci.yml
+        run: actionlint .github/workflows/ci.yml
+
+  # ── e. Gitleaks — secret scan ──────────────────────────────────────────────
+  gitleaks:
+    name: Gitleaks — secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history; default shallow clone makes these gates fail or scan nothing
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION=8.21.2
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Gitleaks detect — working tree and git history
+        run: gitleaks detect --source . --verbose
+        continue-on-error: true  # warn-only: surfaces findings without failing the run
+
+  # ── f. Trivy — vulnerability + misconfiguration ────────────────────────────
+  trivy:
+    name: Trivy — vulnerability and misconfiguration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy — fs mode (dependency / vulnerability scan)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          exit-code: "0"  # warn-only: surfaces findings without failing the run
+
+      - name: Trivy — config mode (Dockerfile + Compose misconfiguration)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: "0"  # warn-only: surfaces findings without failing the run
+
+  # ── g. Commitizen — Conventional Commits check ─────────────────────────────
+  commitizen:
+    name: Commitizen — Conventional Commits check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history; needed for --rev-range
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: cz check — validate new commits against Conventional Commits spec
+        # Mirrors the local gate at .githooks/commit-msg (which uses --commit-msg-file,
+        # unavailable in CI). Bounded to origin/main..HEAD so pre-existing non-conventional
+        # commits in history do not fail this gate.
+        run: |
+          COUNT=$(git rev-list origin/main..HEAD --count)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No new commits ahead of origin/main — nothing to check."
+          else
+            uv run cz check --rev-range origin/main..HEAD
+          fi
