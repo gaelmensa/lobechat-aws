@@ -100,19 +100,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
+            https://aquasecurity.github.io/trivy-repo/deb \
+            $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -qq
+          sudo apt-get install -y trivy
+
       - name: Trivy — fs mode (dependency / vulnerability scan)
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          exit-code: "0"  # warn-only: surfaces findings without failing the run
+        run: trivy fs --exit-code 0 --format table .
+        continue-on-error: true  # warn-only: surfaces findings without failing the run
 
       - name: Trivy — config mode (Dockerfile + Compose misconfiguration)
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: config
-          scan-ref: .
-          exit-code: "0"  # warn-only: surfaces findings without failing the run
+        run: trivy config --exit-code 0 --format table .
+        continue-on-error: true  # warn-only: surfaces findings without failing the run
 
   # ── g. Commitizen — Conventional Commits check ─────────────────────────────
   commitizen:
